@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+    <script>
+        // Reload attendance table dynamically
+        function reloadAttendanceTable() {
+            fetch("/")
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, "text/html");
+                    const updatedTable = doc.querySelector("table");
+                    document.querySelector("table").replaceWith(updatedTable);
+                })
+                .catch(error => console.error("Error reloading table:", error));
+        }
+
+        // Mark attendance (present/absent) for a specific subject
+        function markAttendance(subject, status) {
+            fetch(`/mark/${subject}/${status}`, {
+                method: "POST",
+            })
+            .then(response => {
+                if (response.ok) {
+                    reloadAttendanceTable();
+                } else {
+                    console.error("Error marking attendance:", response.statusText);
+                }
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        // Add bulk attendance records
+        function addAttendanceRecords() {
+            const rows = document.querySelectorAll("#attendance-table tr");
+            const attendanceData = [];
+
+            rows.forEach(row => {
+                const subject = row.querySelector(".subject-select")?.value;
+                const presentLectures = parseInt(row.querySelector(".present-lectures")?.value || 0);
+                const absentLectures = parseInt(row.querySelector(".absent-lectures")?.value || 0);
+
+                if (subject) {
+                    attendanceData.push({
+                        subject: subject,
+                        present: presentLectures,
+                        absent: absentLectures,
+                    });
+                }
+            });
+
+            fetch("/add_attendance_records", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(attendanceData),
+            })
+            .then(response => {
+                if (response.ok) {
+                    reloadAttendanceTable();
+                } else {
+                    console.error("Error adding attendance records:", response.statusText);
+                }
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        // Add a new subject and dynamically update dropdowns
+        function addSubject() {
+            const subjectInput = document.querySelector('input[name="subject"]');
+            const subject = subjectInput.value.trim();
+
+            if (subject) {
+                fetch("/", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                    body: `subject=${subject}&add_subject=1`,
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // Add the new subject to dropdowns dynamically
+                        const dropdowns = document.querySelectorAll(".subject-select");
+                        dropdowns.forEach(dropdown => {
+                            const option = document.createElement("option");
+                            option.value = subject;
+                            option.textContent = subject;
+                            dropdown.appendChild(option);
+                        });
+
+                        // Clear the input field
+                        subjectInput.value = "";
+                        reloadAttendanceTable();
+                    } else {
+                        console.error("Error adding subject:", response.statusText);
+                    }
+                })
+                .catch(error => console.error("Error:", error));
+            }
+        }
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Attendance Dashboard</h1>
+    </header>
+
+    <div class="container">
+        <h2>Welcome, {{ current_user.username }}</h2>
+
+        {% if attendance_data %}
+        <h3>Attendance Records</h3>
+        <table border="1">
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Total Lectures</th>
+                    <th>Present</th>
+                    <th>Absent</th>
+                    <th>Attendance %</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for subject, data in attendance_data.items() %}
+                <tr>
+                    <td>{{ subject }}</td>
+                    <td>{{ data.total_lectures }}</td>
+                    <td>{{ data.present }}</td>
+                    <td>{{ data.absent }}</td>
+                    <td>{{ data.attendance_percentage }}%</td>
+                    <td>
+                        <button onclick="markAttendance('{{ subject }}', 'present')">Present</button>
+                        <button onclick="markAttendance('{{ subject }}', 'absent')">Absent</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>Refresh to add multiple entries after adding all subjects</p>
+        {% endif %}
+
+        <h3>Add Attendance Records</h3>
+        <table id="attendance-table" border="1">
+            <thead>
+                <tr>
+                    <th>Subject</th>
+                    <th>Present Lectures</th>
+                    <th>Absent Lectures</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for subject in attendance_data.keys() %}
+                <tr>
+                    <td>
+                        <select class="subject-select">
+                            <option value="{{ subject }}">{{ subject }}</option>
+                        </select>
+                    </td>
+                    <td><input type="number" class="present-lectures" min="0" value="0"></td>
+                    <td><input type="number" class="absent-lectures" min="0" value="0"></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button onclick="addAttendanceRecords()">Add Attendance Records</button>
+
+        <h3>Add a Single Subject</h3>
+        <form onsubmit="event.preventDefault(); addSubject();">
+            <input type="text" name="subject" placeholder="Subject Name" required>
+            <button type="submit">Add Subject</button>
+        </form>
+
+        <a href="{{ url_for('logout') }}">Logout</a>
+    </div>
+
+    <footer>
+        <p>© 2024 Attendance System. All Rights Reserved.</p>
+    </footer>
+</body>
+</html>
